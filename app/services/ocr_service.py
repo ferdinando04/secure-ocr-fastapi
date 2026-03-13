@@ -8,6 +8,9 @@ from app.models.ocr_models import OCRData
 from app.core.config import settings
 
 class OCRService:
+    """
+    Servicio de procesamiento de imágenes y OCR optimizado para IDs de Venezuela.
+    """
     def __init__(self, reader: easyocr.Reader):
         self.reader = reader
         self.blacklist_exact = [
@@ -24,12 +27,15 @@ class OCRService:
         self.labels_apellidos = ["APELLIDOS", "APELLIDO", "AFELLIDOS", "APELUIDOS", "APELLID0S", "APELLID0", "APELLIDOS", "ACALLIOS", "KPELLDOS"]
 
     def extract_data(self, image_path: str) -> dict:
-        """Flujo principal de extracción sin escrituras globales."""
+        """
+        Flujo de procesamiento de imagen: Escaneo -> ROI -> OCR -> Parsing.
+        No realiza escrituras en directorios fuera del scope efímero.
+        """
         logger.info(f"Iniciando procesamiento OCR: {os.path.basename(image_path)}")
         
         img_raw = cv2.imread(image_path)
         if img_raw is None:
-            raise ValueError("No se pudo cargar la imagen para procesamiento.")
+            raise ValueError(f"No se pudo cargar la imagen: {image_path}")
 
         # 1. Escáner documental y orientación
         warped = self._scan_document(img_raw)
@@ -38,7 +44,7 @@ class OCRService:
         # 2. Preparación de zona de datos (ROI)
         roi = self._isolate_data_zone(warped_oriented)
         
-        # 3. Optimización para OCR (Modo Esteroides en Memoria)
+        # 3. Optimización para OCR
         processed_ocr_img = self._preprocess_for_ocr(roi)
         
         # 4. Reconocimiento de Texto
@@ -51,13 +57,12 @@ class OCRService:
         )
         
         # 5. Filtrado por confianza y parsing
-        confidences = [res[2] for res in results_raw]
+        confidences = [res[2] for res in results_raw if len(res) > 2]
         avg_confidence = sum(confidences) / len(confidences) if confidences else 0
         
-        valid_results = [res for res in results_raw if res[2] >= settings.MIN_CONFIDENCE]
-        text_blobs = [res[1] for res in valid_results]
+        valid_results = [res[1] for res in results_raw if res[2] >= settings.MIN_CONFIDENCE]
         
-        data = self._parse_venezuelan_id(text_blobs)
+        data = self._parse_venezuelan_id(valid_results)
         
         return {
             "data": data,
@@ -66,7 +71,6 @@ class OCRService:
         }
 
     def _scan_document(self, img):
-        # Lógica de detección de contornos heredada pero saneada
         ratio = img.shape[0] / 800.0
         resized = cv2.resize(img, (int(img.shape[1] / ratio), 800))
         gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
@@ -84,8 +88,7 @@ class OCRService:
                 break
         
         if doc_cnt is None:
-            logger.warning("No se detectó contorno de 4 puntos, usando imagen original mejorada.")
-            return img # O aplicar una mejora básica
+            return img
             
         pts = doc_cnt.reshape(4, 2) * ratio
         rect = self._order_points(pts)
@@ -99,7 +102,13 @@ class OCRService:
         heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
         maxHeight = max(int(heightA), int(heightB))
         
-        dst = np.array([[0, 0], [maxWidth-1, 0], [maxWidth-1, maxHeight-1], [0, maxHeight-1]], dtype="float32")
+        dst = np.array([
+            [0, 0], 
+            [maxWidth-1, 0], 
+            [maxWidth-1, maxHeight-1], 
+            [0, maxHeight-1]
+        ], dtype="float32")
+        
         M = cv2.getPerspectiveTransform(rect, dst)
         return cv2.warpPerspective(img, M, (maxWidth, maxHeight))
 
@@ -117,8 +126,7 @@ class OCRService:
         keywords = ["REPUBLICA", "BOLIVARIANA", "VENEZUELA", "CEDULA"]
         
         if not any(k in text_top for k in keywords):
-            logger.debug("Verificando si la imagen está invertida 180 grados...")
-            return cv2.rotate(img_plana, cv2.ROTATE_180) # Simplificación: si no está arriba, rotar 180
+            return cv2.rotate(img_plana, cv2.ROTATE_180)
         return img_plana
 
     def _isolate_data_zone(self, img):
@@ -131,7 +139,6 @@ class OCRService:
         h, w = img.shape[:2]
         img_resized = cv2.resize(img, (w*4, h*4), interpolation=cv2.INTER_CUBIC)
         gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
-        # Filtro Unsharp Mask
         gaussian = cv2.GaussianBlur(gray, (0, 0), 2.0)
         return cv2.addWeighted(gray, 1.5, gaussian, -0.5, 0)
 
@@ -140,13 +147,11 @@ class OCRService:
         texts_up = [t.upper().strip() for t in texts]
         full_text = " ".join(texts_up)
 
-        # 1. Cédula
         for t in texts_up:
             nums = re.sub(r'\D', '', t)
             if 6 <= len(nums) <= 9 and not data.Cedula:
                 data.Cedula = f"{int(nums):,}".replace(",", ".")
 
-        # 2. Nombres y Apellidos (Anclas)
         for i, t in enumerate(texts_up):
             if any(k in t for k in self.labels_nombres):
                 if i + 1 < len(texts) and self._is_valid_titular(texts[i+1]):
@@ -155,7 +160,6 @@ class OCRService:
                 if i + 1 < len(texts) and self._is_valid_titular(texts[i+1]):
                     data.Apellidos = self._clean_value(texts[i+1])
 
-        # 3. Datos Globales
         if "SOLTER" in full_text: data.Estado_Civil = "SOLTERO/A"
         elif "CASAD" in full_text: data.Estado_Civil = "CASADO/A"
         if "VENEZOLAN" in full_text: data.Nacionalidad = "Venezolano/a"
