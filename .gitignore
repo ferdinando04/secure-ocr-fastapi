@@ -3,12 +3,8 @@ __pycache__/
 *$py.class
 .env
 .venv
-venv/
 logs/
 tmp/
 .pytest_cache/
-*.jpg
-*.png
-*.txt
 .github/
 !.github/workflows/

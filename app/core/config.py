@@ -5,11 +5,12 @@ from pydantic import Field
 class Settings(BaseSettings):
     # API Metadata
     APP_NAME: str = "OCR Venezolano Elite"
-    APP_VERSION: str = "1.0.2"
+    APP_VERSION: str = "1.1.0"
     DEBUG: bool = False
 
     # Security
     API_KEY: str = Field(..., min_length=32, description="Clave de API obligatoria")
+    # CORS: El valor por defecto es restrictivo. NUNCA usar "*" con allow_credentials=True
     ALLOWED_ORIGINS: List[str] = Field(default_factory=lambda: ["http://localhost:3000"])
     API_PREFIX: str = "/api/v1"
 

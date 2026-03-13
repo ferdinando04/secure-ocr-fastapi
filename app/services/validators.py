@@ -6,25 +6,26 @@ from loguru import logger
 from io import BytesIO
 
 class ImageValidator:
+    """
+    Validaciones de seguridad para archivos de entrada.
+    """
     @staticmethod
     def validate(file_content: bytes):
-        # 1. Validación de tamaño
-        size_mb = len(file_content) / (1024 * 1024)
-        if size_mb > settings.MAX_FILE_SIZE_MB:
-            logger.error(f"Falla: Archivo excedió límite ({size_mb:.2f}MB)")
+        # 1. Límite de Tamaño
+        if len(file_content) > (settings.MAX_FILE_SIZE_MB * 1024 * 1024):
             raise HTTPException(
                 status_code=status.HTTP_413_PAYLOAD_TOO_LARGE,
-                detail=f"Archivo excede el límite de {settings.MAX_FILE_SIZE_MB}MB"
+                detail=f"Archivo excede {settings.MAX_FILE_SIZE_MB}MB"
             )
 
-        # 2. Validación de Magic Bytes
+        # 2. Deep MIME Check (Magic Bytes)
         mime = magic.Magic(mime=True)
-        detected_type = mime.from_buffer(file_content)
-        if not detected_type.startswith("image/"):
-            logger.error(f"Falla: Mime type inválido ({detected_type})")
+        detected = mime.from_buffer(file_content)
+        if not detected.startswith("image/"):
+            logger.error(f"Intento de subida de archivo no-imagen: {detected}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El archivo enviado no es una imagen válida."
+                detail="El archivo no es una imagen válida."
             )
 
         # 3. Anti-Decompression Bomb
@@ -32,15 +33,13 @@ class ImageValidator:
             with Image.open(BytesIO(file_content)) as img:
                 w, h = img.size
                 if w > settings.MAX_IMAGE_RESOLUTION or h > settings.MAX_IMAGE_RESOLUTION:
-                    logger.error(f"Falla: Resolución sospechosa ({w}x{h})")
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Resolución de imagen no permitida."
+                        detail="Resolución de imagen sospechosa detectada."
                     )
-        except Exception as e:
-            logger.error(f"Falla: Error decodificando imagen ({str(e)})")
+        except Exception:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La imagen no pudo ser procesada."
+                detail="Imagen corrupta o inválida."
             )
         return True

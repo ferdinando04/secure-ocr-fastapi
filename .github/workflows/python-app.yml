@@ -20,22 +20,21 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgl1-mesa-glx libglib2.0-0 libmagic1
+        sudo apt-get install -y libgl1-mesa-glx libglib2.0-0 libmagic1 curl
         
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    - name: Check compilation
+    - name: Run compilation check
       run: python -m compileall app tests
         
-    - name: Run tests
+    - name: Run tests with environment
       env:
-        # Configuración específica para CI
         API_KEY: "dummy-key-for-testing-purposes-only-32-chars"
         ALLOWED_ORIGINS: '["http://localhost:3000"]'
         TMP_DIR: "/tmp/ocr_service"
       run: |
         mkdir -p /tmp/ocr_service
-        pytest tests/
+        pytest -v tests/

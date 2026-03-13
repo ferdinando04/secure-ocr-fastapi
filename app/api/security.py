@@ -12,10 +12,10 @@ api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=True)
 
 async def get_api_key(api_key: str = Security(api_key_header)):
     """
-    Validación de API Key en tiempo constante.
+    Valida la API Key usando comparación en tiempo constante.
     """
     if not secrets.compare_digest(api_key, settings.API_KEY):
-        logger.warning("Intento de acceso con API Key inválida.")
+        logger.warning("Falla de autenticación: API Key inválida.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales de API inválidas"
@@ -25,15 +25,14 @@ async def get_api_key(api_key: str = Security(api_key_header)):
 @contextmanager
 def request_scope_dir():
     """
-    Gestión de directorio efímero para aislamiento de PII.
+    Crea un directorio efímero para la request y garantiza su eliminación total (Cleanup).
     """
     req_id = str(uuid.uuid4())
     path = os.path.join(settings.TMP_DIR, f"req_{req_id}")
     os.makedirs(path, exist_ok=True)
     try:
-        logger.debug(f"Directorio efímero creado: {path}")
         yield path
     finally:
         if os.path.exists(path):
             shutil.rmtree(path)
-            logger.debug(f"Directorio efímero eliminado: {path}")
+            logger.debug(f"PII Cleanup completado: {req_id}")
