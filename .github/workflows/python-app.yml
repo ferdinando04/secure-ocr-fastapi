@@ -1,4 +1,4 @@
-name: Python CI/CD
+name: Python CI
 
 on:
   push:
@@ -7,14 +7,13 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
     
     - name: Set up Python 3.10
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v4
       with:
         python-version: "3.10"
         
@@ -28,13 +27,15 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    - name: Lint with flake8 or check compilation
-      run: |
-        python -m compileall app tests
+    - name: Check compilation
+      run: python -m compileall app tests
         
-    - name: Test with pytest
+    - name: Run tests
       env:
-        API_KEY: "dummy-key-for-testing-purposes-only"
-        ALLOWED_ORIGINS: '["*"]'
+        # Configuración específica para CI
+        API_KEY: "dummy-key-for-testing-purposes-only-32-chars"
+        ALLOWED_ORIGINS: '["http://localhost:3000"]'
+        TMP_DIR: "/tmp/ocr_service"
       run: |
+        mkdir -p /tmp/ocr_service
         pytest tests/

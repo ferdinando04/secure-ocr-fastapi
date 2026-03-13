@@ -5,14 +5,12 @@ from pydantic import Field
 class Settings(BaseSettings):
     # API Metadata
     APP_NAME: str = "OCR Venezolano Elite"
-    APP_VERSION: str = "1.0.1"
+    APP_VERSION: str = "1.0.2"
     DEBUG: bool = False
 
     # Security
-    # Sin valor por defecto sensible para obligar uso de variables de entorno
     API_KEY: str = Field(..., min_length=32, description="Clave de API obligatoria")
-    # Lista vacía por defecto para forzar configuración explícita
-    ALLOWED_ORIGINS: List[str] = Field(default_factory=list)
+    ALLOWED_ORIGINS: List[str] = Field(default_factory=lambda: ["http://localhost:3000"])
     API_PREFIX: str = "/api/v1"
 
     # OCR Config
@@ -30,7 +28,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     model_config = SettingsConfigDict(
-        env_file=".env", 
+        env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True
     )

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 
 class OCRData(BaseModel):
@@ -8,11 +8,13 @@ class OCRData(BaseModel):
     Fecha_Nacimiento: Optional[str] = None
     Estado_Civil: Optional[str] = None
     Nacionalidad: Optional[str] = None
-    Tipo: str = "DESCONOCIDO"
+    Tipo: str = "CEDULA"
+
+    model_config = ConfigDict(populate_by_name=True)
 
 class OCRResponse(BaseModel):
     success: bool
     filename: str
-    data: OCRData
-    confidence_score: float = Field(..., ge=0, le=1.0)
+    data: Optional[OCRData] = None
+    confidence_score: float
     warnings: List[str] = []

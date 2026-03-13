@@ -14,16 +14,16 @@ from app.services.ocr_service import OCRService
 from app.services.validators import ImageValidator
 from app.models.ocr_models import OCRResponse
 
-# Configuración de Logs Estructurados
+# Pre-crear directorio de logs
 os.makedirs("logs", exist_ok=True)
+
 logger.add(
-    "logs/ocr_service.log", 
-    rotation="10 MB", 
-    serialize=True, 
+    "logs/ocr_service.log",
+    rotation="10 MB",
+    serialize=True,
     level=settings.LOG_LEVEL
 )
 
-# Inicializar Limiter con key_func correcto
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
@@ -35,10 +35,9 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS Seguro - Evitar wildcard en prod
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS if settings.ALLOWED_ORIGINS else ["http://localhost:3000"],
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["POST", "GET"],
     allow_headers=["X-API-KEY", "Content-Type"],
@@ -46,16 +45,15 @@ app.add_middleware(
 
 # Singleton del motor OCR
 logger.info("Cargando motor EasyOCR en memoria...")
-# Se asume que el modelo se descarga en el build de Docker o al inicio
 reader = easyocr.Reader(settings.OCR_LANGS, gpu=settings.OCR_GPU)
 ocr_service = OCRService(reader)
 logger.success("Motor Listo.")
 
-@app.get("/health", tags=["Infraestructure"])
+@app.get("/health", tags=["Infrastructure"])
 async def health_check():
     return {
-        "status": "ok", 
-        "version": settings.APP_VERSION, 
+        "status": "ok",
+        "version": settings.APP_VERSION,
         "timestamp": time.time(),
         "gpu": settings.OCR_GPU
     }
@@ -69,29 +67,28 @@ async def health_check():
 @limiter.limit("5/minute")
 async def extract_id_data(request: Request, file: UploadFile = File(...)):
     """
-    Endpoint principal para extracción de datos de ID.
-    El parámetro 'request' es obligatorio para que slowapi funcione correctamente.
+    Endpoint principal para extracción de datos.
     """
     start_time = time.time()
     logger.info(f"Recibida solicitud para: {file.filename}")
-    
+
     # 1. Leer contenido
     content = await file.read()
-    
-    # 2. Validación de Seguridad
+
+    # 2. Validación de Seguridad Temprana
     ImageValidator.validate(content)
-    
+
     # 3. Procesamiento en aislamiento
     with request_scope_dir() as tmp_path:
         input_path = os.path.join(tmp_path, "input_image.jpg")
         with open(input_path, "wb") as f:
             f.write(content)
-            
+
         try:
             extraction = ocr_service.extract_data(input_path)
             process_time = time.time() - start_time
             logger.info(f"Extracción exitosa en {process_time:.2f}s")
-            
+
             return OCRResponse(
                 success=True,
                 filename=file.filename,
@@ -99,7 +96,7 @@ async def extract_id_data(request: Request, file: UploadFile = File(...)):
                 confidence_score=extraction["average_confidence"],
                 warnings=extraction["warnings"]
             )
-            
+
         except Exception as e:
             logger.exception(f"Error crítico procesando {file.filename}: {str(e)}")
             raise HTTPException(
