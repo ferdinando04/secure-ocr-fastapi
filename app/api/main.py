@@ -14,54 +14,39 @@ from app.services.ocr_service import OCRService
 from app.services.validators import ImageValidator
 from app.models.ocr_models import OCRResponse
 
-# Pre-crear directorios necesarios
-os.makedirs("logs", exist_ok=True)
-os.makedirs(settings.TMP_DIR, exist_ok=True)
-
-# Configuración de Logs Estructurados
-logger.add(
-    "logs/ocr_service.log",
-    rotation="10 MB",
-    serialize=True,
-    level=settings.LOG_LEVEL
-)
-
-# Inicializar Limiter
-limiter = Limiter(key_func=get_remote_address)
-
-# OCR Service Placeholder (Lazy init en lifespan)
-ocr_service: OCRService = None
+# Lazy loading container
+_ocr_engine = {"service": None}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Gestión del ciclo de vida: Carga el motor OCR al arrancar el servicio.
-    Esto desacopla la inicialización pesada de los imports globales.
+    Inicialización de recursos pesados fuera del import global.
+    Permite que los tests arranquen instantáneamente.
     """
-    global ocr_service
-    logger.info("Inicializando motor EasyOCR (Lifespan)...")
+    logger.info("Lifespan: Inicializando motor EasyOCR...")
     try:
         import easyocr
         reader = easyocr.Reader(settings.OCR_LANGS, gpu=settings.OCR_GPU)
-        ocr_service = OCRService(reader)
-        logger.success("Motor OCR cargado satisfactoriamente.")
+        _ocr_engine["service"] = OCRService(reader)
+        logger.success("EasyOCR listo.")
     except Exception as e:
-        logger.critical(f"Falla catastrófica cargando EasyOCR: {e}")
-        raise e
+        logger.critical(f"Falla al iniciar motor OCR: {e}")
     yield
-    logger.info("Apagando servicio OCR...")
+    logger.info("Lifespan: Apagando servicio.")
 
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="Servicio OCR Profesional - Versión Endurecida Staff Level",
+    description="API Elite de Extracción OCR para Cédulas Venezolanas",
     lifespan=lifespan
 )
 
+# Configuración de Rate Limiting
+limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS: Configuración coherente y segura
+# CORS Seguro y sensato
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -70,63 +55,61 @@ app.add_middleware(
     allow_headers=["X-API-KEY", "Content-Type"],
 )
 
-@app.get("/health", tags=["Infrastructure"])
-async def health_check():
+@app.get("/health")
+async def health():
     return {
-        "status": "ok",
+        "status": "ready" if _ocr_engine["service"] else "starting",
         "version": settings.APP_VERSION,
-        "timestamp": time.time(),
-        "gpu": settings.OCR_GPU,
-        "engine_ready": ocr_service is not None
+        "engine": "EasyOCR"
     }
 
 @app.post(
     f"{settings.API_PREFIX}/extract",
     response_model=OCRResponse,
-    dependencies=[Depends(get_api_key)],
-    tags=["OCR"]
+    dependencies=[Depends(get_api_key)]
 )
-@limiter.limit("5/minute")
-async def extract_id_data(request: Request, file: UploadFile = File(...)):
+@limiter.limit("10/minute")
+async def extract(request: Request, file: UploadFile = File(...)):
     """
-    Endpoint principal para extracción de datos de Cédula.
-    Requiere X-API-KEY válida y sigue política de aislamiento efímero.
+    Endpoint principal: Transforma una imagen en datos estructurados.
     """
     start_time = time.time()
-    logger.info(f"Procesando archivo: {file.filename}")
+    
+    if not _ocr_engine["service"]:
+        raise HTTPException(status_code=503, detail="Motor OCR no inicializado")
 
-    # 1. Validación de Seguridad Temprana (En memoria)
     content = await file.read()
+    # Validación sensata: Tamaño y Magic Bytes
     ImageValidator.validate(content)
 
-    # 2. Procesamiento en aislamiento del Sistema de Archivos
     with request_scope_dir() as tmp_path:
-        input_path = os.path.join(tmp_path, "input_image.jpg")
-        with open(input_path, "wb") as f:
+        input_file = os.path.join(tmp_path, f"input_{int(time.time())}.jpg")
+        with open(input_file, "wb") as f:
             f.write(content)
 
         try:
-            if ocr_service is None:
-                raise RuntimeError("El motor OCR no ha sido inicializado.")
+            result = _ocr_engine["service"].extract_data(input_file)
+            duration = round(time.time() - start_time, 3)
             
-            extraction = ocr_service.extract_data(input_path)
-            
+            # Clasificación simple del resultado para el integrador
+            status_result = "processed"
+            if result["average_confidence"] < 0.4:
+                status_result = "suspicious"
+            elif not result["data"].cedula.value:
+                status_result = "partial"
+
             return OCRResponse(
                 success=True,
+                status=status_result,
                 filename=file.filename,
-                data=extraction["data"],
-                confidence_score=extraction["average_confidence"],
-                warnings=extraction["warnings"],
-                process_time=time.time() - start_time
+                data=result["data"],
+                confidence_score=round(result["average_confidence"], 2),
+                process_time=duration,
+                warnings=result["warnings"]
             )
-
         except Exception as e:
-            logger.exception(f"Error interno procesando {file.filename}")
+            logger.exception("Error en procesamiento de OCR")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Ocurrió un error interno al procesar el documento. No se revelaron detalles sensibles."
+                detail="Error interno al procesar la imagen."
             )
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
