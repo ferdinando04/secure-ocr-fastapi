@@ -15,9 +15,11 @@ Este repositorio proporciona una **base técnica funcional** para automatizar la
 
 ## 🛠️ Configuración y Uso
 
-### Variables de Entorno (.env)
+### Configuración (.env)
+Configura tu acceso en el archivo `.env`:
 ```bash
-API_KEY="clave_robusta_para_autenticacion"
+API_KEY="clave_robusta_de_32_caracteres_minimo"
+# NUNCA usar "*" en producción; define orígenes explícitos
 ALLOWED_ORIGINS=["http://localhost:3000"]
 ```
 

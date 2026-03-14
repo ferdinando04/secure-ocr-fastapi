@@ -9,7 +9,7 @@ from app.core.config import settings
 class OCRService:
     """
     Servicio de Extracción Documental (Generic ID-OCR).
-    Diseñado para extraer datos estructurados de documentos de identidadLatinoamericanos.
+    Diseñado para extraer datos estructurados de documentos de identidad latinoamericanos.
     """
     def __init__(self, reader):
         self.reader = reader
