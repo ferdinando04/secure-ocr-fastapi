@@ -1,4 +1,4 @@
-# 🪪 ID-OCR Extraction Base
+# 🪪 ID-OCR Extraction Base v1.3
 
 API para la extracción de datos desde documentos de identidad (Cédulas, Identificaciones) con enfoque en América Latina (Colombia y región).
 

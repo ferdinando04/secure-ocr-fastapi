@@ -5,7 +5,7 @@ from pydantic import Field
 class Settings(BaseSettings):
     # API Metadata
     APP_NAME: str = "Secure ID-OCR API"
-    APP_VERSION: str = "1.2.0"
+    APP_VERSION: str = "1.3.0"
     DEBUG: bool = False
 
     # Security
