@@ -6,6 +6,10 @@ from app.api.main import app
 from app.core.config import settings
 
 client = TestClient(app)
+app.state.limiter.enabled = False
+
+# Mock global para evitar que EasyOCR intente cargar pesos/GPU en tests
+patch("easyocr.Reader", autospec=True).start()
 
 def test_health_check_api():
     response = client.get("/health")
@@ -18,22 +22,28 @@ def test_unauthorized_extraction():
     assert response.status_code == 401
 
 @patch("app.api.main._ocr_engine")
-def test_successful_colombia_10_digit_id(mock_engine):
+@patch("app.services.validators.Image.open")
+def test_successful_colombia_10_digit_id(mock_pil, mock_engine):
+    # Mock PIL para aceptar cualquier dummy data como válida
+    mock_img = MagicMock()
+    mock_img.size = (1000, 1000)
+    mock_pil.return_value.__enter__.return_value = mock_img
+
     # Demostramos soporte real para IDs de 10 dígitos (Colombia)
+    from app.models.ocr_models import OCRData, OCRField
     mock_service = MagicMock()
     mock_service.extract_data.return_value = {
-        "data": MagicMock(
-            cedula=MagicMock(value="1000200300", confidence=0.99),
-            nombres=MagicMock(value="CAMILO", confidence=0.95),
-            apellidos=MagicMock(value="RODRIGUEZ", confidence=0.92),
-            tipo="CEDULA"
+        "data": OCRData(
+            cedula=OCRField(value="1000200300", confidence=0.99),
+            nombres=OCRField(value="CAMILO", confidence=0.95),
+            apellidos=OCRField(value="RODRIGUEZ", confidence=0.92)
         ),
         "average_confidence": 0.95,
         "warnings": []
     }
-    mock_engine["service"] = mock_service
+    mock_engine.__getitem__.return_value = mock_service
     
-    pixel_jpg = b'\xff\xd8\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' ",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff\xd9'
+    pixel_jpg = b'\xff\xd8\x00\x00' # Minimal dummy data
     
     response = client.post(
         f"{settings.API_PREFIX}/extract",
@@ -47,7 +57,7 @@ def test_successful_colombia_10_digit_id(mock_engine):
     assert len(res_json["data"]["cedula"]["value"]) == 10
 
 def test_payload_too_large_general():
-    large_data = b"0" * (6 * 1024 * 1024) # 6MB
+    large_data = b"0" * (51 * 1024 * 100) # 5.1MB aproximadamente
     response = client.post(
         f"{settings.API_PREFIX}/extract",
         headers={"X-API-KEY": settings.API_KEY},

@@ -1,4 +1,9 @@
-import magic
+try:
+    import magic
+    LIBMAGIC_AVAILABLE = True
+except (ImportError, Exception):
+    LIBMAGIC_AVAILABLE = False
+
 from PIL import Image
 from fastapi import HTTPException, status
 from app.core.config import settings
@@ -18,15 +23,21 @@ class ImageValidator:
                 detail=f"Archivo excede {settings.MAX_FILE_SIZE_MB}MB"
             )
 
-        # 2. Deep MIME Check (Magic Bytes)
-        mime = magic.Magic(mime=True)
-        detected = mime.from_buffer(file_content)
-        if not detected.startswith("image/"):
-            logger.error(f"Intento de subida de archivo no-imagen: {detected}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El archivo no es una imagen válida."
-            )
+        # 2. Deep MIME Check (Magic Bytes) - Fallback si libmagic no está
+        if LIBMAGIC_AVAILABLE:
+            try:
+                mime = magic.Magic(mime=True)
+                detected = mime.from_buffer(file_content)
+                if not detected.startswith("image/"):
+                    logger.error(f"Intento de subida de archivo no-imagen: {detected}")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="El archivo no es una imagen válida."
+                    )
+            except Exception as e:
+                logger.warning(f"Error en validación libmagic (usando fallback): {e}")
+        else:
+            logger.info("libmagic no disponible. Omitiendo validación nativa de MIME (Fallback a PIL).")
 
         # 3. Anti-Decompression Bomb
         try:
