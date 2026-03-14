@@ -1,73 +1,56 @@
-# 🇻🇪 OCR Extractor Venezolano Elite - Principal Level
+# 🪪 Secure ID-OCR API - Enterprise Grade
 
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.109.2-009688?style=flat-square&logo=fastapi)
-![EasyOCR](https://img.shields.io/badge/EasyOCR-1.7.2-orange?style=flat-square)
-![Docs](https://img.shields.io/badge/API-Swagger-blue?style=flat-square)
+![Security](https://img.shields.io/badge/AppSec-Ready-red?style=flat-square)
 
-API profesional diseñada para la extracción de datos de Cédulas de Identidad venezolanas. Focalizada en la **utilidad del dato**, la **facilidad de integración** y una **seguridad pragmática** de grado producción.
+API profesional para la extracción automatizada de datos desde Documentos de Identidad (Cédulas, IDs). Diseñada para integraciones de **Onboarding**, **KYC** y **Automatización Documental**.
 
-## 🚀 Propuesta de Valor
-A diferencia de OCRs genéricos, este servicio incluye:
-- **Heurísticas Específicas**: Optimizado para la estructura del SAIME (Nombres, Apellidos, Cédula).
-- **Preprocesamiento OpenCV**: Mejora automática de contraste y reducción de ruido antes del OCR.
-- **Modelo de Respuesta Rico**: Confianza por campo y tiempos de procesamiento para optimizar la experiencia del usuario final.
-- **Aislamiento de Seguridad**: Limpieza automática de datos sensibles tras cada procesamiento.
+## 🎯 Alcance del Producto
+Este servicio está optimizado para documentos de identidad de América Latina (Colombia, Hispanoamérica) mediante:
+- **Adaptative Parsing**: Heurísticas inteligentes que detectan nombres y números de identificación sin depender de una plantilla fija.
+- **Image Hardening**: Preprocesamiento por OpenCV para maximizar la lectura en condiciones de baja iluminación.
+- **Zero-Persistence PII**: Los datos sensibles nunca se almacenan permanentemente; se procesan en memoria o en volúmenes efímeros auto-limpiables.
 
-## 🛠️ Configuración de Inicio Rápido
+## 🚀 Inicio Rápido
 
-### 1. Preparar el entorno
-Crea tu archivo `.env`:
+### Prerrequisitos
+- Docker / Python 3.10+
+- `libmagic` (Instalado automáticamente en el contenedor)
+
+### Configuración
+Configura tu acceso en `.env`:
 ```bash
-API_KEY="tu_clave_de_32_caracteres_minimo"
-# Lista explícita de orígenes permitidos (CORS)
-ALLOWED_ORIGINS=["http://localhost:3000", "https://tuapp.com"]
+API_KEY="clave_robusta_de_32_caracteres"
+ALLOWED_ORIGINS=["http://localhost:3000"]
 ```
 
-### 2. Ejecutar con Docker (Recomendado)
+### Uso del API
+Envía un POST al endpoint de extracción:
 ```bash
-docker build -t ocr-elite .
-docker run -p 8000:8000 --env-file .env ocr-elite
+curl -X POST "http://localhost:8000/api/v1/extract" \
+     -H "X-API-KEY: tu_clave" \
+     -F "file=@mi_cedula.jpg"
 ```
 
-### 3. Integración Básica (Ejemplo Python)
-```python
-import requests
-
-url = "http://localhost:8000/api/v1/extract"
-headers = {"X-API-KEY": "tu_clave_aqui"}
-files = {"file": open("cedula.jpg", "rb")}
-
-response = requests.post(url, headers=headers, files=files)
-print(response.json())
-```
-
-## 📊 Modelo de Respuesta
-El servicio no solo devuelve texto, sino datos estructurados útiles para tu lógica de negocio:
+## 📊 Especificación de Respuesta
 ```json
 {
   "success": true,
   "status": "processed",
   "data": {
-    "cedula": { "value": "12345678", "confidence": 0.99 },
-    "nombres": { "value": "PEDRO PABLO", "confidence": 0.85 },
-    "apellidos": { "value": "PEREZ", "confidence": 0.91 }
+    "cedula": { "value": "100200300", "confidence": 0.98 },
+    "nombres": { "value": "CAMILO ANDRES", "confidence": 0.95 },
+    "apellidos": { "value": "RODRIGUEZ", "confidence": 0.92 }
   },
-  "confidence_score": 0.92,
-  "process_time": 1.23,
-  "warnings": []
+  "confidence_score": 0.95,
+  "process_time": 1.45
 }
 ```
 
-## 🧪 Calidad y Testing
-Probado rigurosamente contra:
-- **MIME Spoofing**: Protección contra archivos falsos.
-- **Resource Limits**: Límites de resolución y peso para evitar DoS.
-- **Eficacia Extraccción**: Pruebas de parsing de campos venezolano.
-
-Para ejecutar tests locales:
-```bash
-pytest tests/
-```
+## 🛡️ Seguridad y Resiliencia
+- **Protección Anti-Dos**: Límites de resolución y peso (5MB).
+- **MIME Validation**: Inspección profunda de cabeceras para prevenir ejecución de código.
+- **Rate Limiting**: Control de abuso integrado.
 
 ---
-*Intervención de ingeniería por Antigravity AI - Enfocada en Producto y Utilidad.*
+*Desarrollado con estándares Principal Engineer para máxima utilidad y confiabilidad.*

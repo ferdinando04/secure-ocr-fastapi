@@ -21,14 +21,13 @@ _ocr_engine = {"service": None}
 async def lifespan(app: FastAPI):
     """
     Inicialización de recursos pesados fuera del import global.
-    Permite que los tests arranquen instantáneamente.
     """
-    logger.info("Lifespan: Inicializando motor EasyOCR...")
+    logger.info("Lifespan: Inicializando motor de reconocimiento ID-OCR...")
     try:
         import easyocr
         reader = easyocr.Reader(settings.OCR_LANGS, gpu=settings.OCR_GPU)
         _ocr_engine["service"] = OCRService(reader)
-        logger.success("EasyOCR listo.")
+        logger.success("Motor OCR listo para procesamiento documental.")
     except Exception as e:
         logger.critical(f"Falla al iniciar motor OCR: {e}")
     yield
@@ -37,7 +36,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="API Elite de Extracción OCR para Cédulas Venezolanas",
+    description="API Profesional de Extracción Documental por OCR para Documentos de Identidad (ID Recognition)",
     lifespan=lifespan
 )
 
@@ -46,7 +45,7 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS Seguro y sensato
+# CORS Seguro y pragmático
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -55,7 +54,7 @@ app.add_middleware(
     allow_headers=["X-API-KEY", "Content-Type"],
 )
 
-@app.get("/health")
+@app.get("/health", tags=["Infrastructure"])
 async def health():
     return {
         "status": "ready" if _ocr_engine["service"] else "starting",
@@ -66,20 +65,21 @@ async def health():
 @app.post(
     f"{settings.API_PREFIX}/extract",
     response_model=OCRResponse,
-    dependencies=[Depends(get_api_key)]
+    dependencies=[Depends(get_api_key)],
+    tags=["OCR"]
 )
 @limiter.limit("10/minute")
 async def extract(request: Request, file: UploadFile = File(...)):
     """
-    Endpoint principal: Transforma una imagen en datos estructurados.
+    Endpoint principal: Transforma una imagen de identificación en datos estructurados.
     """
     start_time = time.time()
     
     if not _ocr_engine["service"]:
-        raise HTTPException(status_code=503, detail="Motor OCR no inicializado")
+        raise HTTPException(status_code=503, detail="Servicio OCR en proceso de arranque")
 
     content = await file.read()
-    # Validación sensata: Tamaño y Magic Bytes
+    # Validación de seguridad y formato
     ImageValidator.validate(content)
 
     with request_scope_dir() as tmp_path:
@@ -91,7 +91,7 @@ async def extract(request: Request, file: UploadFile = File(...)):
             result = _ocr_engine["service"].extract_data(input_file)
             duration = round(time.time() - start_time, 3)
             
-            # Clasificación simple del resultado para el integrador
+            # Clasificación del resultado
             status_result = "processed"
             if result["average_confidence"] < 0.4:
                 status_result = "suspicious"
@@ -108,8 +108,8 @@ async def extract(request: Request, file: UploadFile = File(...)):
                 warnings=result["warnings"]
             )
         except Exception as e:
-            logger.exception("Error en procesamiento de OCR")
+            logger.exception("Error en pipeline de procesamiento OCR")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error interno al procesar la imagen."
+                detail="No se pudo procesar el documento. Intente de nuevo o use una imagen más clara."
             )
